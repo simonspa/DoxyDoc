@@ -7,5 +7,17 @@
 
     // the maximum amount of lines to parse to retrieve
     // all the parameters of a function or class
-    "max_lines": 5
+    "max_lines": 5,
+
+    // determines the number of characters to use to
+    // delineate sections
+    "section_line_length": 59,
+    
+    // automatically fills in the author line in the file 
+    // header comment block
+    "author": "",
+
+    // automatically fills in the copyright line in the file
+    // header comment block
+    "copyright": ""
 }

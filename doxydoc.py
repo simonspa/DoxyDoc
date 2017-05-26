@@ -1,9 +1,9 @@
 import sublime, sublime_plugin
 import re
+from datetime import date
 
 def get_settings():
     return sublime.load_settings("DoxyDoc.sublime-settings")
-
 
 def get_setting(key, default=None):
     return get_settings().get(key, default)
@@ -71,6 +71,12 @@ def get_function_args(fn_str):
 
     return result
 
+def partial_section_line(string):
+    return section_line()[len(string):]
+
+def section_line():
+    return "/{}/".format("*"*(get_setting("section_line_length", 99)-2))
+
 class DoxydocCommand(sublime_plugin.TextCommand):
     def set_up(self):
         identifier =  r"([a-zA-Z_]\w*)"
@@ -79,6 +85,7 @@ class DoxydocCommand(sublime_plugin.TextCommand):
         self.regexp = {
             "templates": r"\s*template\s*<(.+)>\s*",
             "class": r"\s*(?:class|struct)\s*" + identifier + r"\s*{?",
+            
             "function": function_identifiers + r"(?P<return>(?:typename\s*)?[\w:<>]+)?\s*"
                                                r"(?P<subname>[A-Za-z_]\w*::)?"
                                                r"(?P<name>operator\s*.{1,2}|[A-Za-z_:]\w*)\s*"
@@ -108,6 +115,10 @@ class DoxydocCommand(sublime_plugin.TextCommand):
         if not current_line or current_line.find("/**") == -1:
             # Strange bug..
             return "\n * ${0}\n */"
+
+        # write a file header snippet if we are at the top
+        if view.line(point).begin() == 0:
+            return self.file_snippet(current_line)
 
         point += len(current_line) + 1
 
@@ -188,6 +199,20 @@ class DoxydocCommand(sublime_plugin.TextCommand):
         # if all else fails, just send a closing snippet
         return "\n * ${0}\n */"
 
+    def file_snippet(self, string):
+        snippet = ( partial_section_line(string) + 
+                  ("\n/**"
+                   "\n * {0}author  ${{1:{author}}}"
+                   "\n * {0}date    ${{2:{date}}}"
+                   "\n * {0}version ${{3:1.0}}"
+                   "\n * "
+                   "\n * {0}copyright ${{4:{copyright}}}"
+                   "\n * {0}brief     ${{5:[brief description]}}"
+                   "\n * {0}details   ${{6:[long description]}}"
+                   "\n * "
+                   "\n */\n".format(self.command_type, author=get_setting("author", "author"), date=date.today(), copyright=get_setting("copyright", "copyright-text"))) +
+                   section_line())
+        return snippet
 
     def regular_snippet(self):
         snippet = ("\n * {0}brief ${{1:[brief description]}}"
@@ -267,24 +292,84 @@ class DoxygenCompletions(sublime_plugin.EventListener):
         self.command_type = '@' if setting('javadoc', True) else '\\'
 
     def default_completion_list(self):
-        return [('author',        'author ${1:[author]}'),
-                ('deprecated',    'deprecated ${1:[deprecated-text]}'),
-                ('exception',     'exception ${1:[exception-object]} ${2:[description]}'),
-                ('param',         'param ${1:[parameter-name]} ${2:[description]}'),
-                ('return',        'return ${1:[description]}'),
-                ('see',           'see ${1:[reference]}'),
-                ('since',         'since ${1:[since-text]}'),
-                ('throws',        'throws ${1:[exception-object]} ${2:[description]}'),
-                ('version',       'version ${1:[version-text]}'),
-                ('code',          'code \n* ${0:[text]}\n* @endcode'),
-                ('bug',           'bug ${1:[bug-text]}'),
-                ('details',       'details ${1:[detailed-text]}'),
-                ('warning',       'warning ${1:[warning-message]}'),
-                ('todo',          'todo ${1:[todo-text]}'),
-                ('defgroup',      'defgroup ${1:[group-name]} ${2:[group-title]}'),
-                ('ingroup',       'ingroup ${1:[group-name]...}'),
-                ('addtogroup',    'addtogroup ${1:[group-name]} ${2:[group-title]}'),
-                ('weakgroup',     'weakgroup ${1:[group-name]} ${2:[group-title]}')]
+        return [('addtogroup',      'addtogroup ${1:[group-name]} ${2:[group-title]}'),
+                ('attention',       'attention ${1:[attention-text]}'),
+                ('author',          'author ${1:[author]}'),
+                ('authors',         'authors ${1:[author]}'),
+                ('brief',           'brief ${1:[brief-text]}'),
+                ('bug',             'bug ${1:[bug-text]}'),
+                ('code',            'code \n* ${{1:[text]}}\n* {0}endcode'.format(self.command_type)),
+                #('cond',            'cond ${{1:[section-name]}} \n* \n*/\n$2\n/// {0}endcond'.format(self.command_type)),
+                ('copybrief',       'copybrief ${1:[link-object]}'),
+                ('copydetails',     'copydetails ${1:[link-object]}'),
+                ('copydoc',         'copydoc ${1:[link-object]}'),
+                ('copyright',       'copyright ${1:[copyright-text]}'),
+                ('date',            'date ${{1:{0}}}'.format(date.today())),
+                ('defgroup',        'defgroup ${1:[group-name]} ${2:[group-title]}'),
+                ('deprecated',      'deprecated ${1:[deprecated-text]}'),
+                ('details',         'details ${1:[detailed-text]}'),
+                ('dir',             'dir ${1:[path]}'),
+                ('dontinclude',     'dontinclude ${1:[file-name]}'),
+                ('dot',             'dot \n*   ${{1:[dot-graph]}}\n* {0}enddot'.format(self.command_type)),
+                ('f[',              'f[\n*   ${{1:[formula]}}\n* {0}f]'.format(self.command_type)),
+                ('example',         'example ${1:[file-name]}'),
+                ('exception',       'exception ${1:[exception-object]} ${2:[description]}'),
+                ('ifdox',           'if ${{1:[section-name]}} \n*   $2\n* {0}endif'.format(self.command_type)),
+                ('ifnot',           'ifnot ${{1:[section-name]}} \n*   $2\n* {0}endif'.format(self.command_type)),
+                ('image',           'image ${1:[format]} ${2:[file-name]}'),
+                ('include',         'include ${1:[file-name]}'),
+                ('includedoc',      'includedoc ${1:[file-name]}'),
+                ('includelineno',   'includelineno ${1:[file-name]}'),
+                ('ingroup',         'ingroup ${1:[group-name]...}'),
+                ('internal',        'internal\n*   ${{1}}\n* {0}endinternal'.format(self.command_type)),
+                ('invariant',       'invariant ${1:[invariant-text]}'),
+                ('line',            'line ${1:[pattern]}'),
+                ('mainpage',        'mainpage ${1:[title]}'),
+                ('msc',             'msc \n*   ${{1:[msc-graph]}}\n* {0}endmsc'.format(self.command_type)),
+                ('name',            'name ${1:[group-name]}'),
+                ('note',            'note ${1:[note-text]}'),
+                ('overload',        'overload ${1:[overload-object]}'),
+                ('page',            'page ${1:[page-name]} ${2:[page-title]}'),
+                ('par',             'par ${1:[paragraph-title]} ${2:[paragraph-text]}'),
+                ('paragraph',       'paragraph ${1:[paragraph-name]} ${2:[paragraph-title]}'),
+                ('param',           'param ${1:[parameter-name]} ${2:[description]}'),
+                ('parblock',        'parblock\n*   ${{1:[paragraph-text]}}\n* {0}endparblock'.format(self.command_type)),
+                ('post',            'post ${1:[postcondition-text]}'),
+                ('pre',             'pre ${1:[precondition-text]}'),
+                ('ref',             'ref ${1:[reference-name]}'),
+                ('related',         'related ${1:[related-class]}'),
+                ('relates',         'relates ${1:[related-class]}'),
+                ('relatedalso',     'relatedalso ${1:[related-class]}'),
+                ('relatesalso',     'relatesalso ${1:[related-class]}'),
+                ('remark',          'remark ${1:[remark-text]}'),
+                ('remarks',         'remarks ${1:[remark-text]}'),
+                ('result',          'result ${1:[description]}'),
+                ('return',          'return ${1:[description]}'),
+                ('returns',         'returns ${1:[description]}'),
+                ('retval',          'retval ${1:[return-value]} ${2:[description]}'),
+                ('secreflist',      'secreflist\n*   {0}refitem ${{1:[reference-items]...}}\n* {0}endsecreflist'.format(self.command_type)),
+                ('section',         'section ${1:[section-name]} ${2:[section-title]}'),
+                ('see',             'see ${1:[referencing-text]}'),
+                ('short',           'short ${1:[brief-text]}'),
+                ('since',           'since ${1:[since-text]}'),
+                ('skip',            'skip ${1:[pattern]}'),
+                ('skipline',        'skipline ${1:[pattern]}'),
+                ('snippet',         'snippet ${1:[file-name]} ${2:[block-id]}'),
+                ('snippetdoc',      'snippetdoc ${1:[file-name]} ${2:[block-id]}'),
+                ('snippetlineno',   'snippetlineno ${1:[file-name]} ${2:[block-id]}'),
+                ('subpage',         'subpage ${1:[page-name]} ${2:[page-text]}'),
+                ('subsection',      'subsection ${1:[subsection-name]} ${2:[subsection-title]}'),
+                ('subsubsection',   'subsubsection ${1:[subsubsection-name]} ${2:[subsubsection-title]}'),
+                ('test',            'test ${1:[test-description]}'),
+                ('throw',           'throw ${1:[exception-object]} ${2:[description]}'),
+                ('throws',          'throws ${1:[exception-object]} ${2:[description]}'),
+                ('todo',            'todo ${1:[todo-text]}'),
+                ('tparam',          'tparam ${1:[parameter-name]} ${2:[description]}'),
+                ('until',           'until ${1:[pattern]}'),
+                ('verbatim',        'verbatim\n* ${{1:[verbatim-text]}}\n* {0}endverbatim'.format(self.command_type)),
+                ('version',         'version ${1:[version-text]}'),
+                ('warning',         'warning ${1:[warning-message]}'),
+                ('weakgroup',       'weakgroup ${1:[group-name]} ${2:[group-title]}')]
 
     def on_query_completions(self, view, prefix, locations):
         # Only trigger within comments
